@@ -1,0 +1,45 @@
+# Env files
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+ENV/
+
+# Logs & reports
+*.log
+logs/
+reports/
+
+# Test caches
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Large data dirs (do NOT push)
+uploads/
+dataroom/
+research/
+
+# Node / frontend (if present)
+node_modules/
+dist/
+build/
+
+app/llama_model/
+*.gguf

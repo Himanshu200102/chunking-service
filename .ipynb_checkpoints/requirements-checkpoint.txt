@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+pydantic
+pymongo
+opensearch-py
+lancedb
+python-multipart

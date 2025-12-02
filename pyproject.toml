@@ -1,0 +1,108 @@
+[build-system]
+requires = ["hatchling>=1.22"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dataroom-ai"
+version = "0.1.0"
+description = "RAG DataRoom: projects, files, versions, ingestion, search."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "DataRoom Team" }]
+
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pymongo>=4.8.0",
+  "opensearch-py>=2.6.0",
+  "lancedb>=0.7.0,<1.0.0",
+  "python-multipart>=0.0.9",
+  "PyJWT==2.9.0",
+  "pydantic>=2.7.0",
+  "typing-extensions>=4.12.0",
+  docling
+  pypdf
+  pdfplumber
+  PyPDF2
+  pymupdf
+  pdfminer.six
+  python-docx
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.2",
+  "pytest-asyncio==0.24.0",
+  "httpx==0.27.0",
+  "mongomock==4.1.2",
+  "ruff==0.6.9",
+  "black==24.8.0",
+  "isort==5.13.2",
+  "mypy==1.11.2",
+  "types-PyYAML",
+]
+worker = [
+  "celery>=5.3.0",
+  "redis>=5.0.0",
+  # or, if you choose RQ instead of Celery:
+  # "rq>=1.16.2"
+]
+
+[project.scripts]
+dataroom-api = "uvicorn:main"
+# NOTE: Run with: `dataroom-api app.main:app --host 0.0.0.0 --port 8000 --reload`
+# If you prefer a fixed entrypoint, create a tiny launcher:
+#   # app/__main__.py
+#   import uvicorn; uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+# then set: dataroom-api = "app.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "scripts"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests"]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+asyncio_mode = "strict"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["uploads/", ".venv/", "venv/"]
+lint.select = ["E", "F", "I", "N", "B", "UP"]
+lint.ignore = [
+  "E203",  # black compatibility
+  "E501",  # we'll rely on black for wrapping
+]
+
+[tool.black]
+target-version = ["py311"]
+line-length = 100
+extend-exclude = "uploads/|venv/|.venv/"
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = ["uploads", "venv", ".venv"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+strict_optional = true
+pretty = true
+exclude = "(uploads|venv|.venv)/"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

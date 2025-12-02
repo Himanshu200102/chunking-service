@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongoDataRoom
+    restart: unless-stopped
+    ports: ["27017:27017"]
+    volumes:
+      - mongo_data:/data/db
+
+  opensearch:
+    image: opensearchproject/opensearch:2.13.0
+    container_name: opensearchDataRoom
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - plugins.security.disabled=true
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    ports: ["9200:9200"]
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    environment: 
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Quantamind@123 
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - plugins.security.disabled=true
+
+  dashboards:  # optional, nice for inspection
+    image: opensearchproject/opensearch-dashboards:2.13.0
+    container_name: dashboards-DataRoom
+    depends_on: [opensearch]
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+      - DISABLE_SECURITY=true
+
+
+    ports: ["5601:5601"]
+
+  api:
+    build: .
+    container_name: DataRoom-api
+    depends_on: [mongo, opensearch]
+    env_file: [".env"]
+    environment:
+      - RETRIEVER_SERVICE_URL=http://host.docker.internal:8001
+    working_dir: /app
+    volumes:
+      - ./uploads:/app/uploads
+      - lancedb_data:/data/lancedb
+      - ./app/llama_model:/app/llama_model
+      - ./app:/app/app  # Mount app directory for live code reload
+    ports: ["8002:8000"]  # Expose chunking/DataRoom API on 8002
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  mongo_data:
+  opensearch_data:
+  lancedb_data:
+
+## add inmemory faiis for caching

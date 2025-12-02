@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete RAG Pipeline Demo - DataRoom</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .workflow-steps {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            position: relative;
+            min-width: 150px;
+        }
+
+        .step::after {
+            content: '→';
+            position: absolute;
+            right: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 24px;
+            color: #667eea;
+        }
+
+        .step:last-child::after {
+            display: none;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: #667eea;
+            color: white;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .step.active .step-number {
+            background: #28a745;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 600;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        input[type="file"] {
+            padding: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.success {
+            background: #28a745;
+        }
+
+        button.warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+            display: block;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .file-list {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .file-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .file-id {
+            font-size: 0.9em;
+            color: #666;
+            font-family: monospace;
+        }
+
+        .response-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .response-text {
+            line-height: 1.6;
+            font-size: 1.05em;
+            margin-top: 10px;
+        }
+
+        .chunk-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .chunk-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .chunk-ref {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .chunk-text {
+            color: #333;
+            line-height: 1.6;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Complete RAG Pipeline Demo</h1>
+        <p class="subtitle">Upload → Parse → Sync → Query with Agent - End-to-End Workflow</p>
+
+        <!-- Workflow Steps -->
+        <div class="workflow-steps">
+            <div class="step" id="step1">
+                <div class="step-number">1</div>
+                <div>Create Project</div>
+            </div>
+            <div class="step" id="step2">
+                <div class="step-number">2</div>
+                <div>Upload Files</div>
+            </div>
+            <div class="step" id="step3">
+                <div class="step-number">3</div>
+                <div>Parse & Chunk</div>
+            </div>
+            <div class="step" id="step4">
+                <div class="step-number">4</div>
+                <div>Sync to Retriever</div>
+            </div>
+            <div class="step" id="step5">
+                <div class="step-number">5</div>
+                <div>Query & Get Response</div>
+            </div>
+        </div>
+
+        <!-- Step 1: Create Project -->
+        <div class="section">
+            <h2>📁 Step 1: Create or Select Project</h2>
+            <div class="form-group">
+                <label>Project Name (for new project):</label>
+                <input type="text" id="projectName" value="Demo Project" placeholder="e.g., Demo Project">
+            </div>
+            <div class="form-group">
+                <label>OR Enter Existing Project ID:</label>
+                <input type="text" id="existingProjectId" value="" placeholder="e.g., p_abc123def4">
+                <small style="color: #666; display: block; margin-top: 5px;">If you already have a project, enter its ID here</small>
+            </div>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <button id="createProjectBtn" class="success">📁 Create New Project</button>
+                <button id="useExistingProjectBtn" class="warning">📋 Use Existing Project</button>
+                <button id="listProjectsBtn" style="background: #6c757d;">📋 List My Projects</button>
+            </div>
+            <div id="projectStatus" class="status"></div>
+        </div>
+
+        <!-- Step 2: Upload Files -->
+        <div class="section">
+            <h2>📤 Step 2: Upload Files</h2>
+            <div class="form-group">
+                <label>Project ID:</label>
+                <input type="text" id="uploadProjectId" value="" placeholder="Enter project ID from Step 1">
+            </div>
+            <div class="form-group">
+                <label>Select Files (PDF, DOCX, etc.):</label>
+                <input type="file" id="fileInput" multiple accept=".pdf,.docx,.doc,.txt">
+            </div>
+            <button onclick="uploadFiles()" class="success">📤 Upload Files</button>
+            <div id="uploadStatus" class="status"></div>
+            <div id="uploadedFiles" class="file-list" style="display: none;"></div>
+        </div>
+
+        <!-- Step 3: Parse Files -->
+        <div class="section">
+            <h2>⚙️ Step 3: Parse & Chunk Files</h2>
+            <div class="form-group">
+                <label>Project ID:</label>
+                <input type="text" id="parseProjectId" value="" placeholder="Enter project ID">
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="forceParse" style="width: auto; margin-right: 8px;">
+                    Force re-parse (even if already parsed)
+                </label>
+            </div>
+            <button onclick="parseAllFiles()" class="success">⚙️ Parse All Files</button>
+            <div id="parseStatus" class="status"></div>
+        </div>
+
+        <!-- Step 4: Sync to Retriever -->
+        <div class="section">
+            <h2>🔄 Step 4: Sync Chunks to Retriever</h2>
+            <div class="form-group">
+                <label>Project ID:</label>
+                <input type="text" id="syncProjectId" value="" placeholder="Enter project ID">
+            </div>
+            <button onclick="syncAllFiles()" class="success">🔄 Sync All Files to Retriever</button>
+            <div id="syncStatus" class="status"></div>
+        </div>
+
+        <!-- Step 5: Query -->
+        <div class="section">
+            <h2>🔎 Step 5: Query with Agent & Get Response</h2>
+            <div class="form-group">
+                <label>Project ID:</label>
+                <input type="text" id="queryProjectId" value="" placeholder="Enter project ID">
+            </div>
+            <div class="form-group">
+                <label>Your Question:</label>
+                <textarea id="userQuery" placeholder="Ask a question about your documents...">What are the main topics discussed in the documents?</textarea>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="useAgent" checked style="width: auto; margin-right: 8px;">
+                    Use Intelligent Agent (automatically decides file-specific vs global search)
+                </label>
+            </div>
+            <div class="form-group">
+                <label>Max Results:</label>
+                <input type="number" id="maxResults" value="10" min="1" max="50">
+            </div>
+            <button onclick="queryWithAgent()" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">🤖 Ask Question & Get Response</button>
+            <div id="queryStatus" class="status"></div>
+            <div id="queryResults"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8002';  // DataRoom API on port 8002
+        const RETRIEVER_BASE = 'http://localhost:8001';  // Retriever API on port 8001
+
+        // Step 1: Create Project
+        async function createProject() {
+            const statusDiv = document.getElementById('projectStatus');
+            const projectName = document.getElementById('projectName').value;
+
+            if (!projectName) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please enter a project name';
+                return;
+            }
+
+            statusDiv.className = 'status info';
+            statusDiv.innerHTML = '<span class="loading"></span> Creating project...';
+
+            try {
+                const response = await fetch(`${API_BASE}/projects`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        user_id: 'temp_user_001',
+                        name: projectName
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+                    let errorMsg = errorData.detail || `Failed: ${response.status}`;
+                    
+                    // Handle 409 (project limit) with helpful message
+                    if (response.status === 409) {
+                        errorMsg = `❌ Project limit reached! You already have 2 projects (maximum allowed).<br><br>
+                            <strong>Solutions:</strong><br>
+                            1. Use an existing project ID (enter it above and click "Use Existing Project")<br>
+                            2. Delete an existing project via API<br>
+                            3. Click "List My Projects" to see your existing projects`;
+                    }
+                    
+                    statusDiv.className = 'status error';
+                    statusDiv.innerHTML = errorMsg;
+                    return;
+                }
+
+                const data = await response.json();
+                const projectId = data.project_id;
+
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ Project created! Project ID: <strong>${projectId}</strong>`;
+
+                // Auto-fill project ID in all forms
+                setProjectId(projectId);
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // Use existing project
+        async function useExistingProject() {
+            const statusDiv = document.getElementById('projectStatus');
+            const projectId = document.getElementById('existingProjectId').value.trim();
+
+            if (!projectId) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please enter a project ID';
+                return;
+            }
+
+            statusDiv.className = 'status info';
+            statusDiv.innerHTML = '<span class="loading"></span> Verifying project...';
+
+            try {
+                const response = await fetch(`${API_BASE}/projects/${projectId}?user_id=temp_user_001`);
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('Project not found. Please check the project ID.');
+                    } else if (response.status === 403) {
+                        throw new Error('Access denied. You are not a member of this project.');
+                    }
+                    throw new Error(`Failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const projectName = data.name || projectId;
+
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ Using existing project!<br>Project: <strong>${projectName}</strong> (ID: ${projectId})`;
+
+                setProjectId(projectId);
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // List projects
+        async function listProjects() {
+            const statusDiv = document.getElementById('projectStatus');
+            statusDiv.className = 'status info';
+            statusDiv.innerHTML = '<span class="loading"></span> Loading projects...';
+
+            try {
+                const response = await fetch(`${API_BASE}/projects?user_id=temp_user_001`);
+
+                if (!response.ok) {
+                    throw new Error(`Failed: ${response.status}`);
+                }
+
+                const projects = await response.json();
+
+                if (projects.length === 0) {
+                    statusDiv.className = 'status info';
+                    statusDiv.innerHTML = 'No projects found. Create a new one above.';
+                } else {
+                    let html = '<strong>Your Projects:</strong><br><br>';
+                    projects.forEach(p => {
+                        const pid = p.project_id || p._id || p.id;
+                        const name = p.name || 'Unnamed';
+                        html += `<div style="padding: 8px; margin: 5px 0; background: white; border-radius: 4px; cursor: pointer;" 
+                                     onclick="document.getElementById('existingProjectId').value='${pid}'; useExistingProject();">
+                            <strong>${name}</strong><br>
+                            <span style="font-family: monospace; font-size: 0.9em; color: #666;">ID: ${pid}</span>
+                        </div>`;
+                    });
+                    statusDiv.className = 'status success';
+                    statusDiv.innerHTML = html;
+                }
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // Helper function to set project ID in all forms
+        function setProjectId(projectId) {
+            document.getElementById('uploadProjectId').value = projectId;
+            document.getElementById('parseProjectId').value = projectId;
+            document.getElementById('syncProjectId').value = projectId;
+            document.getElementById('queryProjectId').value = projectId;
+            document.getElementById('existingProjectId').value = projectId;
+            document.getElementById('step1').classList.add('active');
+        }
+
+        // Step 2: Upload Files
+        async function uploadFiles() {
+            const statusDiv = document.getElementById('uploadStatus');
+            const filesInput = document.getElementById('fileInput');
+            const projectId = document.getElementById('uploadProjectId').value;
+
+            if (!projectId) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please create a project first (Step 1)';
+                return;
+            }
+
+            if (!filesInput.files || filesInput.files.length === 0) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please select at least one file';
+                return;
+            }
+
+            statusDiv.className = 'status info';
+            statusDiv.innerHTML = '<span class="loading"></span> Uploading files...';
+
+            const formData = new FormData();
+            for (let file of filesInput.files) {
+                formData.append('files', file);
+            }
+            formData.append('replace', 'false');
+
+            try {
+                const response = await fetch(`${API_BASE}/projects/${projectId}/files`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || `Upload failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const results = data.results || [];
+                const uploaded = data.uploaded || 0;
+
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ Successfully uploaded ${uploaded} file(s)!`;
+
+                // Display uploaded files
+                const filesDiv = document.getElementById('uploadedFiles');
+                filesDiv.style.display = 'block';
+                filesDiv.innerHTML = '<h3 style="margin-bottom: 15px;">Uploaded Files:</h3>';
+
+                results.forEach(result => {
+                    if (result.success !== false) {
+                        const fileItem = document.createElement('div');
+                        fileItem.className = 'file-item';
+                        fileItem.innerHTML = `
+                            <div>
+                                <div class="file-name">${result.filename || 'Unknown'}</div>
+                                <div class="file-id">ID: ${result.file_id || result._id || 'N/A'}</div>
+                            </div>
+                            <div style="color: #28a745;">✓ Queued</div>
+                        `;
+                        filesDiv.appendChild(fileItem);
+                    }
+                });
+
+                document.getElementById('step2').classList.add('active');
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // Step 3: Parse All Files
+        async function parseAllFiles() {
+            const statusDiv = document.getElementById('parseStatus');
+            const projectId = document.getElementById('parseProjectId').value;
+            const force = document.getElementById('forceParse').checked;
+
+            if (!projectId) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please enter a project ID';
+                return;
+            }
+
+            statusDiv.className = 'status info';
+            let dots = 0;
+            const loadingInterval = setInterval(() => {
+                dots = (dots + 1) % 4;
+                statusDiv.innerHTML = `<span class="loading"></span> Parsing files${'.'.repeat(dots)} This may take a few minutes...`;
+            }, 500);
+
+            try {
+                // The endpoint is GET with query parameters and returns SSE stream
+                const params = new URLSearchParams({
+                    user_id: 'temp_user_001',
+                    do_ocr: 'false',
+                    force: force.toString(),
+                    limit: '1000'
+                });
+
+                const response = await fetch(`${API_BASE}/projects/${projectId}/files/parse-all-latest?${params}`, {
+                    method: 'GET'
+                });
+
+                clearInterval(loadingInterval);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || `Parsing failed: ${response.status}`);
+                }
+
+                // Handle SSE stream
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let summary = { processed: 0, skipped: 0, failed: 0 };
+                let chunks = [];
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'init') {
+                                    statusDiv.innerHTML = `<span class="loading"></span> Parsing ${data.total_files} files...`;
+                                } else if (data.type === 'current_status') {
+                                    statusDiv.innerHTML = `<span class="loading"></span> Processing file ${data.current_file}/${data.total_files}... (${data.elapsed_total_seconds}s elapsed)`;
+                                } else if (data.type === 'progress') {
+                                    statusDiv.innerHTML = `<span class="loading"></span> Processing file ${data.current}/${data.total}...`;
+                                } else if (data.type === 'result') {
+                                    if (data.skipped === true) {
+                                        summary.skipped++;
+                                    } else if (data.status === 'parsed' || data.status === 'ok') {
+                                        summary.processed++;
+                                    } else if (data.status === 'failed' || data.status === 'error') {
+                                        summary.failed++;
+                                    }
+                                    if (data.chunks && Array.isArray(data.chunks)) {
+                                        chunks.push(...data.chunks);
+                                    }
+                                } else if (data.type === 'complete') {
+                                    summary = data.summary || summary;
+                                    if (data.chunks && Array.isArray(data.chunks)) {
+                                        chunks = data.chunks;
+                                    }
+                                    
+                                    statusDiv.className = 'status success';
+                                    statusDiv.innerHTML = `✅ Parsing complete!<br>Processed: ${summary.processed || 0}, Skipped: ${summary.skipped || 0}, Failed: ${summary.failed || 0}<br>Total chunks: ${chunks.length}`;
+                                    
+                                    document.getElementById('step3').classList.add('active');
+                                    return;
+                                }
+                            } catch (e) {
+                                // Skip malformed JSON
+                            }
+                        }
+                    }
+                }
+
+                // If we exit the loop, parsing completed
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ Parsing complete!<br>Processed: ${summary.processed || 0}, Skipped: ${summary.skipped || 0}, Failed: ${summary.failed || 0}`;
+                document.getElementById('step3').classList.add('active');
+            } catch (error) {
+                clearInterval(loadingInterval);
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // Step 4: Sync to Retriever
+        async function syncAllFiles() {
+            const statusDiv = document.getElementById('syncStatus');
+            const projectId = document.getElementById('syncProjectId').value;
+
+            if (!projectId) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please enter a project ID';
+                return;
+            }
+
+            statusDiv.className = 'status info';
+            let dots = 0;
+            const loadingInterval = setInterval(() => {
+                dots = (dots + 1) % 4;
+                statusDiv.innerHTML = `<span class="loading"></span> Syncing chunks to retriever${'.'.repeat(dots)} This may take a while...`;
+            }, 500);
+
+            try {
+                // No timeout - LLM processing can take a long time
+                const response = await fetch(`${RETRIEVER_BASE}/chunks/sync-all/${projectId}?force=false`, {
+                    method: 'POST'
+                });
+
+                clearInterval(loadingInterval);
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+                    throw new Error(errorData.detail || `Sync failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const ingested = data.ingested_chunks || 0;
+
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ Sync complete!<br>Ingested ${ingested} chunks into retriever service.`;
+
+                document.getElementById('step4').classList.add('active');
+            } catch (error) {
+                clearInterval(loadingInterval);
+                statusDiv.className = 'status error';
+                let errorMsg = error.message || 'Unknown error occurred';
+                
+                // Handle specific error types
+                if (error.name === 'AbortError') {
+                    errorMsg = 'Request timed out. The sync operation is taking too long. Please try again or check the server logs.';
+                } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_EMPTY_RESPONSE')) {
+                    errorMsg = 'Connection error: The server did not respond. Please check if the retriever service is running on port 8001.';
+                }
+                
+                statusDiv.innerHTML = `❌ Error: ${errorMsg}`;
+                console.error('Sync error:', error);
+            }
+        }
+
+        // Step 5: Query with Agent
+        async function queryWithAgent() {
+            const statusDiv = document.getElementById('queryStatus');
+            const resultsDiv = document.getElementById('queryResults');
+            const projectId = document.getElementById('queryProjectId').value;
+            const query = document.getElementById('userQuery').value;
+            const useAgent = document.getElementById('useAgent').checked;
+            const maxResults = parseInt(document.getElementById('maxResults').value);
+
+            if (!projectId) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please enter a project ID';
+                return;
+            }
+
+            if (!query) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ Please enter a question';
+                return;
+            }
+
+            statusDiv.className = 'status info';
+            statusDiv.innerHTML = '<span class="loading"></span> Processing query with agent...';
+            resultsDiv.innerHTML = '';
+
+            try {
+                // Use the new endpoint on port 8002 that handles everything
+                const params = new URLSearchParams({
+                    query: query,
+                    projectid: projectId,
+                    max_results: maxResults,
+                    use_agent: useAgent
+                });
+
+                // Step 1: Submit query via POST
+                statusDiv.className = 'status info';
+                statusDiv.innerHTML = '<span class="loading"></span> Submitting query...';
+                
+                let submitResponse;
+                try {
+                    submitResponse = await fetch(`${API_BASE}/logs/user-query?${params}`, {
+                        method: 'POST'
+                    });
+                } catch (fetchError) {
+                    console.error('Fetch error:', fetchError);
+                    throw new Error(`Network error: ${fetchError.message || 'Unable to connect to server'}`);
+                }
+
+                if (!submitResponse.ok) {
+                    let errorData;
+                    try {
+                        errorData = await submitResponse.json();
+                    } catch (e) {
+                        errorData = { detail: `HTTP ${submitResponse.status}: ${submitResponse.statusText}` };
+                    }
+                    throw new Error(errorData.detail || `Query submission failed: ${submitResponse.status}`);
+                }
+
+                const submitData = await submitResponse.json();
+                const queryId = submitData.query_id;
+                
+                statusDiv.innerHTML = '<span class="loading"></span> Query submitted! Processing...';
+                
+                // Step 2: Poll for response (no timeout - LLM processing can take a long time)
+                let attempts = 0;
+                const pollInterval = 2000; // Poll every 2 seconds
+                
+                while (true) {
+                    await new Promise(resolve => setTimeout(resolve, pollInterval));
+                    
+                    try {
+                        const responseResponse = await fetch(`${API_BASE}/logs/user-response?query_id=${queryId}`);
+                        
+                        if (responseResponse.ok) {
+                            const responseData = await responseResponse.json();
+                            
+                            if (responseData.status === 'completed') {
+                                // Display the response
+                                displayQueryResults(responseData, query, projectId, statusDiv, resultsDiv);
+                                return;
+                            } else if (responseData.status === 'processing') {
+                                attempts++;
+                                // Update status to show we're still waiting
+                                if (attempts % 15 === 0) { // Every 30 seconds
+                                    statusDiv.innerHTML = `<span class="loading"></span> Still processing... (${Math.floor(attempts * pollInterval / 1000)}s elapsed)`;
+                                }
+                                continue; // Keep polling
+                            } else if (responseData.status === 'error') {
+                                throw new Error(responseData.error || 'Query processing failed');
+                            }
+                        } else {
+                            attempts++;
+                            continue; // Keep trying
+                        }
+                    } catch (pollError) {
+                        // Only throw if it's a real error, not a network issue
+                        if (pollError.message && !pollError.message.includes('fetch')) {
+                            throw pollError;
+                        }
+                        attempts++;
+                        continue;
+                    }
+                }
+
+                document.getElementById('step5').classList.add('active');
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${error.message}`;
+            }
+        }
+
+        // Helper function to process SSE data
+        async function processSSEData(data, streamingDiv, statusDiv, allChunks, allSummaries, fileResults, strategy, reasoning) {
+            if (data.type === 'decision') {
+                strategy = data.strategy;
+                reasoning = data.reasoning;
+                statusDiv.innerHTML = `<span class="loading"></span> Agent decided: ${strategy}<br>${reasoning}`;
+                
+                if (strategy === 'file_specific') {
+                    streamingDiv.innerHTML = '<h3 style="margin-top: 20px; color: #333;">📄 Processing files sequentially:</h3>';
+                }
+            } else if (data.type === 'status') {
+                // Update status for current file
+                const fileStatus = document.getElementById(`file-status-${data.fileid}`);
+                if (fileStatus) {
+                    fileStatus.innerHTML = `<span class="loading"></span> ${data.message}`;
+                } else {
+                    streamingDiv.innerHTML += `
+                        <div id="file-container-${data.fileid}" style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 8px;">
+                            <div id="file-status-${data.fileid}"><span class="loading"></span> ${data.message}</div>
+                            <div id="file-result-${data.fileid}"></div>
+                        </div>
+                    `;
+                }
+            } else if (data.type === 'file_result') {
+                // Display result for this file
+                const fileResultDiv = document.getElementById(`file-result-${data.fileid}`);
+                const fileStatusDiv = document.getElementById(`file-status-${data.fileid}`);
+                
+                if (fileResultDiv) {
+                    let fileHtml = '';
+                    
+                    if (data.summary) {
+                        fileHtml += `
+                            <div class="response-box" style="margin-top: 15px;">
+                                <h4 style="margin: 0 0 10px 0;">🤖 AI Response for ${data.filename || data.fileid}</h4>
+                                <div class="response-text">${data.summary}</div>
+                            </div>
+                        `;
+                    }
+                    
+                    if (data.chunks && data.chunks.length > 0) {
+                        fileHtml += `<h4 style="margin-top: 15px; color: #333;">📄 Retrieved Chunks (${data.chunks.length}):</h4>`;
+                        data.chunks.slice(0, 5).forEach(chunk => {
+                            fileHtml += `
+                                <div class="chunk-card" style="margin-top: 10px;">
+                                    <div class="chunk-header">
+                                        <span class="chunk-ref">${chunk.chunk_ref || 'N/A'}</span>
+                                        <span style="color: #666;">Score: ${chunk.score?.toFixed(4) || 'N/A'}</span>
+                                    </div>
+                                    <div class="chunk-text">${chunk.text || ''}</div>
+                                    ${chunk.filename ? `<div style="margin-top: 8px; font-size: 0.9em; color: #666;">📁 File: ${chunk.filename}</div>` : ''}
+                                </div>
+                            `;
+                        });
+                        if (data.chunks.length > 5) {
+                            fileHtml += `<p style="margin-top: 10px; color: #666;">... and ${data.chunks.length - 5} more chunks</p>`;
+                        }
+                    }
+                    
+                    fileResultDiv.innerHTML = fileHtml;
+                    fileStatusDiv.innerHTML = `✅ Completed processing ${data.filename || data.fileid}`;
+                    
+                    // Store for final summary
+                    allChunks.push(...(data.chunks || []));
+                    if (data.summary) {
+                        allSummaries[data.fileid] = data.summary;
+                    }
+                    fileResults[data.fileid] = {
+                        chunks: data.chunks || [],
+                        summary: data.summary,
+                        filename: data.filename
+                    };
+                }
+            } else if (data.type === 'complete') {
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ All files processed!<br>Strategy: ${strategy || 'file_specific'}`;
+                
+                // Log the final response
+                const finalResponse = Object.values(allSummaries).join('\n\n');
+                try {
+                    await fetch(`${API_BASE}/logs/user-response?${new URLSearchParams({
+                        query: query,
+                        response: finalResponse || 'No response generated',
+                        projectid: projectId
+                    })}`, {
+                        method: 'GET'
+                    });
+                } catch (e) {
+                    console.warn('Failed to log response:', e);
+                }
+            } else if (data.type === 'error') {
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Error: ${data.message}`;
+            }
+        }
+
+        async function handleStreamingResponse(response, query, projectId, statusDiv, resultsDiv) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let allChunks = [];
+            let allSummaries = {};
+            let strategy = null;
+            let reasoning = null;
+            let fileResults = {};
+
+            // Initialize results display
+            let html = '<div id="streaming-results"></div>';
+            resultsDiv.innerHTML = html;
+            const streamingDiv = document.getElementById('streaming-results');
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) {
+                        // Process any remaining buffer
+                        if (buffer.trim()) {
+                            const lines = buffer.split('\n');
+                            for (const line of lines) {
+                                if (line.startsWith('data: ')) {
+                                    try {
+                                        const data = JSON.parse(line.slice(6));
+                                        await processSSEData(data, streamingDiv, statusDiv, allChunks, allSummaries, fileResults, strategy, reasoning);
+                                    } catch (e) {
+                                        console.warn('Failed to parse final SSE data:', e, line);
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    }
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                await processSSEData(data, streamingDiv, statusDiv, allChunks, allSummaries, fileResults, strategy, reasoning);
+                                
+                                // Update strategy and reasoning if they changed
+                                if (data.type === 'decision') {
+                                    strategy = data.strategy;
+                                    reasoning = data.reasoning;
+                                }
+                            } catch (e) {
+                                console.warn('Failed to parse SSE data:', e, line);
+                            }
+                        }
+                    }
+                }
+            } catch (streamError) {
+                console.error('Stream reading error:', streamError);
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = `❌ Stream error: ${streamError.message}`;
+            } finally {
+                try {
+                    reader.releaseLock();
+                } catch (e) {
+                    // Ignore release errors
+                }
+            }
+        }
+
+        function displayQueryResults(data, query, projectId, statusDiv, resultsDiv) {
+            statusDiv.className = 'status success';
+            statusDiv.innerHTML = `✅ Query processed successfully!<br>Strategy: ${data.strategy || 'standard'}, Results: ${data.total_results || 0}`;
+
+            // Display the response
+            let html = '';
+
+            // Show the main response text
+            if (data.response) {
+                html += `
+                    <div class="response-box">
+                        <h3 style="margin: 0 0 10px 0;">🤖 AI Response</h3>
+                        <div class="response-text">${data.response}</div>
+                    </div>
+                `;
+            }
+
+            // Show stats
+            if (data.strategy || data.total_results) {
+                html += `
+                    <div class="stats" style="margin-top: 20px;">
+                        <div class="stat-card">
+                            <div class="stat-value">${data.total_results || 0}</div>
+                            <div class="stat-label">Chunks Found</div>
+                        </div>
+                        ${data.strategy ? `
+                        <div class="stat-card">
+                            <div class="stat-value">${data.strategy}</div>
+                            <div class="stat-label">Strategy</div>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            // Show reasoning if agent was used
+            if (data.reasoning) {
+                html += `
+                    <div style="background: #f0f0f0; padding: 15px; border-radius: 8px; margin-top: 20px;">
+                        <strong>Agent Reasoning:</strong> ${data.reasoning}
+                    </div>
+                `;
+            }
+
+            // Show top chunks
+            if (data.chunks && data.chunks.length > 0) {
+                html += '<h3 style="margin-top: 20px; color: #333;">📄 Retrieved Chunks:</h3>';
+                data.chunks.slice(0, 5).forEach(chunk => {
+                    html += `
+                        <div class="chunk-card">
+                            <div class="chunk-header">
+                                <span class="chunk-ref">${chunk.chunk_ref || 'N/A'}</span>
+                                <span style="color: #666;">Score: ${chunk.score?.toFixed(4) || 'N/A'}</span>
+                            </div>
+                            <div class="chunk-text">${chunk.text || ''}</div>
+                            ${chunk.filename ? `<div style="margin-top: 8px; font-size: 0.9em; color: #666;">📁 File: ${chunk.filename}</div>` : chunk.fileid ? `<div style="margin-top: 8px; font-size: 0.9em; color: #666;">📁 File ID: ${chunk.fileid}</div>` : ''}
+                        </div>
+                    `;
+                });
+                if (data.chunks.length > 5) {
+                    html += `<p style="margin-top: 10px; color: #666;">... and ${data.chunks.length - 5} more chunks</p>`;
+                }
+            }
+
+            resultsDiv.innerHTML = html;
+
+            // Log the response to retriever
+            fetch(`${API_BASE}/logs/user-response?${new URLSearchParams({
+                query: query,
+                response: data.response || 'No response generated',
+                projectid: projectId
+            })}`, {
+                method: 'GET'
+            }).catch(e => console.warn('Failed to log response:', e));
+        }
+
+        // Add event listeners when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            const createBtn = document.getElementById('createProjectBtn');
+            const useExistingBtn = document.getElementById('useExistingProjectBtn');
+            const listBtn = document.getElementById('listProjectsBtn');
+            
+            if (createBtn) {
+                createBtn.addEventListener('click', createProject);
+            }
+            if (useExistingBtn) {
+                useExistingBtn.addEventListener('click', useExistingProject);
+            }
+            if (listBtn) {
+                listBtn.addEventListener('click', listProjects);
+            }
+        });
+    </script>
+</body>
+</html>
+
