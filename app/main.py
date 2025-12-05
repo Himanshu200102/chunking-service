@@ -12,6 +12,8 @@ from app.db.mongo import ensure_indexes
 from app.api.routes.projects import router as projects_router
 from app.api.routes.files import router as files_router
 from app.api.routes.query_logs import router as query_logs_router
+from app.api.routes.user import router as user_router
+from app.api.routes.retriever import router as retriever_router
 # from app.api.routes.users import router as users_router
 # from app.auth.routes import router as auth_router
 
@@ -21,11 +23,19 @@ from app.api.routes.query_logs import router as query_logs_router
 APP_ENV = os.getenv("APP_ENV", "dev")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("MONGO_DB", "dataroom")
-OS_URL = os.getenv("OPENSEARCH_URL", "http://localhost:9200")
+OPENSEARCH_HOST = os.getenv("OPENSEARCH_HOST", "localhost")
+OPENSEARCH_PORT = os.getenv("OPENSEARCH_PORT", "9200")
+OS_URL = os.getenv("OPENSEARCH_URL", f"http://{OPENSEARCH_HOST}:{OPENSEARCH_PORT}")
 LANCE_URI = os.getenv("LANCEDB_URI", "/data/lancedb")
 
 
-app = FastAPI(title="DataRoom API", version="0.1.0")
+app = FastAPI(
+    title="DataRoom API",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
+)
 
 # CORS middleware
 app.add_middleware(
@@ -107,3 +117,5 @@ async def demo():
 app.include_router(projects_router)
 app.include_router(files_router)
 app.include_router(query_logs_router)
+app.include_router(user_router)
+app.include_router(retriever_router)

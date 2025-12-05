@@ -204,20 +204,32 @@ def create_chunks(
         chunk_index += 1
     
     logger.info(f"Created {len(chunks_with_metadata)} hierarchical chunks for file_version_id={file_version_id}")
-    try:
+    
+    # Generate embeddings (disable progress bar to avoid performance issues)
+    # Check if embeddings should be generated (can be disabled for CPU-only systems)
+    import os
+    enable_embeddings = os.getenv("ENABLE_EMBEDDINGS_DURING_PARSING", "false").lower() == "true"
+    
+    if enable_embeddings:
+        try:
+            logger.info(f"Starting embedding generation for {len(chunks_with_metadata)} chunks...")
             embeddings = embed_chunks_batch(
                 chunks_with_metadata,
-                show_progress=True
+                show_progress=False,  # Disable progress bar for better performance
+                batch_size=16  # Smaller batch size for faster processing
             )
             
             # Add embeddings to chunks
             for chunk, embedding in zip(chunks_with_metadata, embeddings):
                 chunk["embedding"] = embedding
             
-            logger.info(f"Successfully generated embeddings for {len(embeddings)} chunks")
-    except Exception as e:
-            logger.error(f"Failed to generate embeddings: {e}")
+            logger.info(f"✅ Successfully generated embeddings for {len(embeddings)} chunks")
+        except Exception as e:
+            logger.error(f"❌ Failed to generate embeddings: {e}", exc_info=True)
             # Continue without embeddings rather than failing
+    else:
+        logger.warning(f"⚠️  Embedding generation DISABLED during parsing (ENABLE_EMBEDDINGS_DURING_PARSING=false)")
+        logger.warning(f"⚠️  Chunks will be saved without embeddings. LanceDB will generate embeddings during sync.")
     
     # Store chunks in MongoDB
     if chunks_with_metadata:

@@ -16,6 +16,10 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install --upgrade pip
 
+# Install stable PyTorch version FIRST (2.9.1 causes hanging on CPU)
+# This will be used instead of the version in requirements.txt
+RUN pip install torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cpu
+
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --upgrade llama-cpp-python
 

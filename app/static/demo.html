@@ -354,8 +354,8 @@
             </div>
             <div class="form-group">
                 <label>OR Enter Existing Project ID:</label>
-                <input type="text" id="existingProjectId" value="" placeholder="e.g., p_abc123def4">
-                <small style="color: #666; display: block; margin-top: 5px;">If you already have a project, enter its ID here</small>
+                <input type="text" id="existingProjectId" value="p_43b3e12cfe" placeholder="e.g., p_abc123def4">
+                <small style="color: #666; display: block; margin-top: 5px;">If you already have a project, enter its ID here (pre-filled with test project)</small>
             </div>
             <div style="display: flex; gap: 10px; margin-bottom: 10px;">
                 <button id="createProjectBtn" class="success">📁 Create New Project</button>
@@ -427,6 +427,25 @@
                 </label>
             </div>
             <div class="form-group">
+                <label>File Selection:</label>
+                <div style="margin-top: 8px;">
+                    <label style="display: block; margin-bottom: 8px;">
+                        <input type="radio" name="fileSelection" id="allFiles" value="all" checked style="width: auto; margin-right: 8px;">
+                        Search all files in project
+                    </label>
+                    <label style="display: block;">
+                        <input type="radio" name="fileSelection" id="singleFile" value="single" style="width: auto; margin-right: 8px;">
+                        Search a specific file
+                    </label>
+                </div>
+                <div id="fileSelectionContainer" style="margin-top: 10px; display: none;">
+                    <button type="button" onclick="loadProjectFiles()" style="background: #667eea; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 10px;">Load Files</button>
+                    <select id="fileSelect" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; background: white; margin-top: 10px;">
+                        <option value="">-- Select a file --</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
                 <label>Max Results:</label>
                 <input type="number" id="maxResults" value="10" min="1" max="50">
             </div>
@@ -437,8 +456,7 @@
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8002';  // DataRoom API on port 8002
-        const RETRIEVER_BASE = 'http://localhost:8001';  // Retriever API on port 8001
+        const API_BASE = 'http://localhost:8002';  // Unified API on port 8002 (includes both chunking and retriever)
 
         // Step 1: Create Project
         async function createProject() {
@@ -662,6 +680,8 @@
             const statusDiv = document.getElementById('parseStatus');
             const projectId = document.getElementById('parseProjectId').value;
             const force = document.getElementById('forceParse').checked;
+            const syncStatusDiv = document.getElementById('syncStatus');
+            const syncProjectInput = document.getElementById('syncProjectId');
 
             if (!projectId) {
                 statusDiv.className = 'status error';
@@ -743,6 +763,14 @@
                                     statusDiv.innerHTML = `✅ Parsing complete!<br>Processed: ${summary.processed || 0}, Skipped: ${summary.skipped || 0}, Failed: ${summary.failed || 0}<br>Total chunks: ${chunks.length}`;
                                     
                                     document.getElementById('step3').classList.add('active');
+
+                                    // NOTE: Auto-sync has been disabled.
+                                    // After parsing completes, please use Step 4 ("Sync Chunks to Retriever")
+                                    // to manually sync chunks via the /chunks/sync-all/{project_id} endpoint.
+                                    if (syncProjectInput) {
+                                        syncProjectInput.value = projectId;
+                                    }
+
                                     return;
                                 }
                             } catch (e) {
@@ -783,7 +811,7 @@
 
             try {
                 // No timeout - LLM processing can take a long time
-                const response = await fetch(`${RETRIEVER_BASE}/chunks/sync-all/${projectId}?force=false`, {
+                const response = await fetch(`${API_BASE}/chunks/sync-all/${projectId}?force=false`, {
                     method: 'POST'
                 });
 
@@ -810,7 +838,7 @@
                 if (error.name === 'AbortError') {
                     errorMsg = 'Request timed out. The sync operation is taking too long. Please try again or check the server logs.';
                 } else if (error.message.includes('Failed to fetch') || error.message.includes('ERR_EMPTY_RESPONSE')) {
-                    errorMsg = 'Connection error: The server did not respond. Please check if the retriever service is running on port 8001.';
+                    errorMsg = 'Connection error: The server did not respond. Please check if the unified service is running on port 8002.';
                 }
                 
                 statusDiv.innerHTML = `❌ Error: ${errorMsg}`;
@@ -818,7 +846,52 @@
             }
         }
 
-        // Step 5: Query with Agent
+        // Load project files for selection
+        async function loadProjectFiles() {
+            const projectId = document.getElementById('queryProjectId').value;
+            const fileSelect = document.getElementById('fileSelect');
+            
+            if (!projectId) {
+                alert('Please enter a project ID first');
+                return;
+            }
+            
+            fileSelect.innerHTML = '<option value="">Loading files...</option>';
+            fileSelect.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE}/projects/${projectId}/files?user_id=temp_user_001`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load files: ${response.status}`);
+                }
+                
+                const files = await response.json();
+                
+                fileSelect.innerHTML = '<option value="">-- Select a file --</option>';
+                
+                if (files.length === 0) {
+                    fileSelect.innerHTML = '<option value="">No files found in this project</option>';
+                    return;
+                }
+                
+                files.forEach(file => {
+                    const fileId = file._id || file.id;
+                    const fileName = file.filename || file.name || fileId;
+                    const option = document.createElement('option');
+                    option.value = fileId;
+                    option.textContent = `${fileName} (${fileId})`;
+                    fileSelect.appendChild(option);
+                });
+                
+                fileSelect.disabled = false;
+            } catch (error) {
+                fileSelect.innerHTML = `<option value="">Error: ${error.message}</option>`;
+                fileSelect.disabled = false;
+            }
+        }
+
+        // Step 5: Query with Agent (using new streaming endpoint)
         async function queryWithAgent() {
             const statusDiv = document.getElementById('queryStatus');
             const resultsDiv = document.getElementById('queryResults');
@@ -826,6 +899,7 @@
             const query = document.getElementById('userQuery').value;
             const useAgent = document.getElementById('useAgent').checked;
             const maxResults = parseInt(document.getElementById('maxResults').value);
+            const fileSelection = document.querySelector('input[name="fileSelection"]:checked').value;
 
             if (!projectId) {
                 statusDiv.className = 'status error';
@@ -839,99 +913,141 @@
                 return;
             }
 
+            // Get selected file ID if single file is selected
+            let fileid = null;
+            if (fileSelection === 'single') {
+                const fileSelect = document.getElementById('fileSelect');
+                fileid = fileSelect.value;
+                if (!fileid) {
+                    statusDiv.className = 'status error';
+                    statusDiv.innerHTML = '❌ Please select a file or choose "Search all files"';
+                    return;
+                }
+            }
+
             statusDiv.className = 'status info';
             statusDiv.innerHTML = '<span class="loading"></span> Processing query with agent...';
             resultsDiv.innerHTML = '';
 
             try {
-                // Use the new endpoint on port 8002 that handles everything
-                const params = new URLSearchParams({
+                // Use the new streaming endpoint
+                const requestBody = {
                     query: query,
                     projectid: projectId,
                     max_results: maxResults,
                     use_agent: useAgent
+                };
+                
+                // Add fileid only if a single file is selected (not for "all files")
+                if (fileid) {
+                    requestBody.fileid = fileid;
+                }
+
+                const response = await fetch(`${API_BASE}/USER/query-response`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestBody)
                 });
 
-                // Step 1: Submit query via POST
-                statusDiv.className = 'status info';
-                statusDiv.innerHTML = '<span class="loading"></span> Submitting query...';
-                
-                let submitResponse;
-                try {
-                    submitResponse = await fetch(`${API_BASE}/logs/user-query?${params}`, {
-                        method: 'POST'
-                    });
-                } catch (fetchError) {
-                    console.error('Fetch error:', fetchError);
-                    throw new Error(`Network error: ${fetchError.message || 'Unable to connect to server'}`);
-                }
-
-                if (!submitResponse.ok) {
+                if (!response.ok) {
                     let errorData;
                     try {
-                        errorData = await submitResponse.json();
+                        errorData = await response.json();
                     } catch (e) {
-                        errorData = { detail: `HTTP ${submitResponse.status}: ${submitResponse.statusText}` };
+                        errorData = { detail: `HTTP ${response.status}: ${response.statusText}` };
                     }
-                    throw new Error(errorData.detail || `Query submission failed: ${submitResponse.status}`);
+                    throw new Error(errorData.detail || `Query failed: ${response.status}`);
                 }
 
-                const submitData = await submitResponse.json();
-                const queryId = submitData.query_id;
-                
-                statusDiv.innerHTML = '<span class="loading"></span> Query submitted! Processing...';
-                
-                // Step 2: Poll for response (no timeout - LLM processing can take a long time)
-                let attempts = 0;
-                const pollInterval = 2000; // Poll every 2 seconds
-                
-                while (true) {
-                    await new Promise(resolve => setTimeout(resolve, pollInterval));
-                    
-                    try {
-                        const responseResponse = await fetch(`${API_BASE}/logs/user-response?query_id=${queryId}`);
-                        
-                        if (responseResponse.ok) {
-                            const responseData = await responseResponse.json();
-                            
-                            if (responseData.status === 'completed') {
-                                // Display the response
-                                displayQueryResults(responseData, query, projectId, statusDiv, resultsDiv);
-                                return;
-                            } else if (responseData.status === 'processing') {
-                                attempts++;
-                                // Update status to show we're still waiting
-                                if (attempts % 15 === 0) { // Every 30 seconds
-                                    statusDiv.innerHTML = `<span class="loading"></span> Still processing... (${Math.floor(attempts * pollInterval / 1000)}s elapsed)`;
-                                }
-                                continue; // Keep polling
-                            } else if (responseData.status === 'error') {
-                                throw new Error(responseData.error || 'Query processing failed');
-                            }
-                        } else {
-                            attempts++;
-                            continue; // Keep trying
-                        }
-                    } catch (pollError) {
-                        // Only throw if it's a real error, not a network issue
-                        if (pollError.message && !pollError.message.includes('fetch')) {
-                            throw pollError;
-                        }
-                        attempts++;
-                        continue;
-                    }
+                // Handle streaming response
+                if (response.body) {
+                    await handleStreamingResponse(response, query, projectId, statusDiv, resultsDiv);
+                } else {
+                    throw new Error('No response body received');
                 }
 
                 document.getElementById('step5').classList.add('active');
             } catch (error) {
                 statusDiv.className = 'status error';
                 statusDiv.innerHTML = `❌ Error: ${error.message}`;
+                console.error('Query error:', error);
             }
         }
 
+        // Handle file selection radio buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const allFilesRadio = document.getElementById('allFiles');
+            const singleFileRadio = document.getElementById('singleFile');
+            const fileSelectionContainer = document.getElementById('fileSelectionContainer');
+            
+            if (allFilesRadio && singleFileRadio && fileSelectionContainer) {
+                allFilesRadio.addEventListener('change', function() {
+                    fileSelectionContainer.style.display = this.checked ? 'none' : 'block';
+                });
+                
+                singleFileRadio.addEventListener('change', function() {
+                    fileSelectionContainer.style.display = this.checked ? 'block' : 'none';
+                });
+            }
+        });
+
         // Helper function to process SSE data
         async function processSSEData(data, streamingDiv, statusDiv, allChunks, allSummaries, fileResults, strategy, reasoning) {
-            if (data.type === 'decision') {
+            if (data.type === 'start') {
+                statusDiv.innerHTML = `<span class="loading"></span> ${data.message}`;
+            } else if (data.type === 'heartbeat') {
+                // Ignore heartbeat events (they're just to keep connection alive)
+                return;
+            } else if (data.type === 'processing') {
+                // Show processing message (e.g., "Processing 1st file...")
+                statusDiv.innerHTML = `<span class="loading"></span> ${data.message}`;
+                return;
+            } else if (data.type === 'final_response') {
+                // Handle final response with inference and citations
+                let finalHtml = '';
+                
+                if (data.inference) {
+                    finalHtml += `
+                        <div class="response-box" style="margin-top: 20px;">
+                            <h4 style="margin: 0 0 10px 0;">🤖 AI Response</h4>
+                            <div class="response-text">${data.inference}</div>
+                        </div>
+                    `;
+                }
+                
+                if (data.citations && data.citations.length > 0) {
+                    finalHtml += `<h4 style="margin-top: 20px; color: #333;">📚 Citations:</h4>`;
+                    finalHtml += '<ul style="margin-top: 10px; padding-left: 20px;">';
+                    data.citations.forEach(citation => {
+                        finalHtml += `<li style="margin-bottom: 8px;">${citation.citation_html || citation.filename || citation.fileid}</li>`;
+                    });
+                    finalHtml += '</ul>';
+                }
+                
+                // Determine where to display (file-specific or global)
+                if (data.fileid && typeof data.fileid === 'string') {
+                    // Single file response
+                    const fileResultDiv = document.getElementById(`file-result-${data.fileid}`);
+                    if (fileResultDiv) {
+                        fileResultDiv.innerHTML = finalHtml;
+                    } else {
+                        streamingDiv.innerHTML += finalHtml;
+                    }
+                } else {
+                    // Global response - replace or append to main results
+                    if (!streamingDiv.querySelector('.response-box')) {
+                        streamingDiv.innerHTML = finalHtml;
+                    } else {
+                        streamingDiv.innerHTML += finalHtml;
+                    }
+                }
+                
+                statusDiv.className = 'status success';
+                statusDiv.innerHTML = `✅ Query completed!`;
+                return;
+            } else if (data.type === 'decision') {
                 strategy = data.strategy;
                 reasoning = data.reasoning;
                 statusDiv.innerHTML = `<span class="loading"></span> Agent decided: ${strategy}<br>${reasoning}`;
@@ -1005,23 +1121,37 @@
             } else if (data.type === 'complete') {
                 statusDiv.className = 'status success';
                 statusDiv.innerHTML = `✅ All files processed!<br>Strategy: ${strategy || 'file_specific'}`;
-                
-                // Log the final response
-                const finalResponse = Object.values(allSummaries).join('\n\n');
-                try {
-                    await fetch(`${API_BASE}/logs/user-response?${new URLSearchParams({
-                        query: query,
-                        response: finalResponse || 'No response generated',
-                        projectid: projectId
-                    })}`, {
-                        method: 'GET'
-                    });
-                } catch (e) {
-                    console.warn('Failed to log response:', e);
-                }
             } else if (data.type === 'error') {
                 statusDiv.className = 'status error';
                 statusDiv.innerHTML = `❌ Error: ${data.message}`;
+            } else if (data.type === 'summary') {
+                // Handle non-streaming summary
+                if (!streamingDiv.querySelector('.response-box')) {
+                    streamingDiv.innerHTML = `
+                        <div class="response-box">
+                            <h4 style="margin: 0 0 10px 0;">🤖 AI Response</h4>
+                            <div class="response-text">${data.summary}</div>
+                        </div>
+                    `;
+                }
+            } else if (data.type === 'chunks') {
+                // Handle non-streaming chunks
+                if (data.chunks && data.chunks.length > 0) {
+                    let chunksHtml = `<h4 style="margin-top: 20px; color: #333;">📄 Retrieved Chunks (${data.total}):</h4>`;
+                    data.chunks.forEach(chunk => {
+                        chunksHtml += `
+                            <div class="chunk-card" style="margin-top: 10px;">
+                                <div class="chunk-header">
+                                    <span class="chunk-ref">${chunk.chunk_ref || 'N/A'}</span>
+                                    <span style="color: #666;">Score: ${chunk.score?.toFixed(4) || 'N/A'}</span>
+                                </div>
+                                <div class="chunk-text">${chunk.text || ''}</div>
+                                ${chunk.filename ? `<div style="margin-top: 8px; font-size: 0.9em; color: #666;">📁 File: ${chunk.filename}</div>` : ''}
+                            </div>
+                        `;
+                    });
+                    streamingDiv.innerHTML += chunksHtml;
+                }
             }
         }
 
@@ -1190,4 +1320,5 @@
     </script>
 </body>
 </html>
+
 

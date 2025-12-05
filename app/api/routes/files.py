@@ -44,14 +44,223 @@ class DeleteFileRequest(BaseModel):
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
 def _new_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:10]}"
+
+
+def _load_chunks_from_uri(chunk_uri: str) -> List[Dict[str, Any]]:
+    """Load chunks from a chunk_uri file (supports both .json and .jsonl formats)."""
+    if not chunk_uri:
+        return []
+    
+    # Resolve path (handle container paths)
+    possible_paths = [chunk_uri]
+    if chunk_uri.startswith("/app/uploads"):
+        # Try host path
+        host_path = chunk_uri.replace("/app/uploads", "/home/himanshu-gcp/DataRoom-ai-sheetal/uploads")
+        possible_paths.insert(0, host_path)
+        # Also try alternative filenames
+        if "chunks.json" in host_path and not host_path.endswith(".jsonl"):
+            possible_paths.insert(0, host_path.replace("chunks.json", "all_chunks.jsonl"))
+            possible_paths.insert(0, host_path.replace("chunks.json", "chunks.jsonl"))
+        elif "chunks.jsonl" in host_path:
+            possible_paths.insert(0, host_path.replace("chunks.jsonl", "all_chunks.jsonl"))
+        elif "all_chunks.jsonl" in host_path:
+            possible_paths.insert(0, host_path.replace("all_chunks.jsonl", "chunks.jsonl"))
+    
+    chunk_file = None
+    for path in possible_paths:
+        if os.path.exists(path):
+            chunk_file = path
+            logger.info(f"Found chunk file at: {path}")
+            break
+    
+    if not chunk_file:
+        logger.warning(f"Chunk file not found at {chunk_uri} or alternatives. Tried: {possible_paths}")
+        return []
+    
+    chunks = []
+    try:
+        # Check if file is .json (single JSON array) or .jsonl (line-delimited JSON)
+        is_json_array = chunk_file.endswith('.json') and not chunk_file.endswith('.jsonl')
+        
+        with open(chunk_file, 'r', encoding='utf-8') as f:
+            if is_json_array:
+                # Single JSON array format
+                data = json.load(f)
+                if isinstance(data, list):
+                    # Normalize chunk format to match expected structure
+                    for chunk in data:
+                        if isinstance(chunk, dict) and "text" in chunk:
+                            # Normalize field names and structure
+                            normalized_chunk = {
+                                "chunk_ref": chunk.get("chunk_ref") or chunk.get("chunk_id") or chunk.get("_id", ""),
+                                "text": chunk.get("text", ""),
+                                "fileid": chunk.get("fileid") or chunk.get("doc_id", ""),
+                                "section_path": chunk.get("section_path", []),
+                                "object_type": chunk.get("object_type", "narrative"),
+                                "page_range": chunk.get("page_range", []),
+                                "caption": chunk.get("caption"),
+                                "metadata": chunk.get("metadata", {})
+                            }
+                            
+                            # Handle section_path - convert string to list if needed
+                            if isinstance(normalized_chunk["section_path"], str):
+                                normalized_chunk["section_path"] = [normalized_chunk["section_path"]] if normalized_chunk["section_path"] else []
+                            
+                            # Handle page_range - convert page_number to page_range if needed
+                            if not normalized_chunk["page_range"] and "page_number" in chunk:
+                                page_num = chunk.get("page_number", 1)
+                                normalized_chunk["page_range"] = [page_num, page_num]
+                            elif not normalized_chunk["page_range"]:
+                                normalized_chunk["page_range"] = [1, 1]
+                            
+                            # Preserve other fields that might be useful
+                            for key in ["chunk_id", "doc_id", "file_version_id", "dataroom_id"]:
+                                if key in chunk and key not in normalized_chunk:
+                                    normalized_chunk[key] = chunk[key]
+                            
+                            chunks.append(normalized_chunk)
+                else:
+                    logger.warning(f"Expected JSON array in {chunk_file}, got {type(data)}")
+            else:
+                # JSONL format (line-delimited JSON)
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        if isinstance(chunk, dict) and "text" in chunk:
+                            # Normalize chunk format
+                            normalized_chunk = {
+                                "chunk_ref": chunk.get("chunk_ref") or chunk.get("chunk_id") or chunk.get("_id", ""),
+                                "text": chunk.get("text", ""),
+                                "fileid": chunk.get("fileid") or chunk.get("doc_id", ""),
+                                "section_path": chunk.get("section_path", []),
+                                "object_type": chunk.get("object_type", "narrative"),
+                                "page_range": chunk.get("page_range", []),
+                                "caption": chunk.get("caption"),
+                                "metadata": chunk.get("metadata", {})
+                            }
+                            
+                            # Handle section_path
+                            if isinstance(normalized_chunk["section_path"], str):
+                                normalized_chunk["section_path"] = [normalized_chunk["section_path"]] if normalized_chunk["section_path"] else []
+                            
+                            # Handle page_range
+                            if not normalized_chunk["page_range"] and "page_number" in chunk:
+                                page_num = chunk.get("page_number", 1)
+                                normalized_chunk["page_range"] = [page_num, page_num]
+                            elif not normalized_chunk["page_range"]:
+                                normalized_chunk["page_range"] = [1, 1]
+                            
+                            chunks.append(normalized_chunk)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse chunk line: {e}")
+                        continue
+        
+        logger.info(f"Successfully loaded {len(chunks)} chunks from {chunk_file}")
+    except Exception as e:
+        logger.error(f"Error loading chunks from {chunk_file}: {e}", exc_info=True)
+    
+    return chunks
+
 
 def _get_latest_version_doc(project_id: str, file_id: str) -> Optional[Dict[str, Any]]:
     return db.file_versions.find_one(
         {"project_id": project_id, "file_id": file_id},
         sort=[("version", -1)]
     )
+
+
+def _trigger_retriever_sync_all(project_id: str) -> None:
+    """
+    After parsing completes for a project, trigger background sync of chunks
+    to the retriever service so any backend client automatically benefits.
+    
+    Since we're now integrated, we directly sync chunks from the parsed files
+    instead of making HTTP calls.
+    """
+    try:
+        from app.retriever.chunking_integration import get_integration
+        from app.retriever.hybrid_client import HybridClient
+        
+        logger.info(f"Auto-syncing chunks to retriever for project {project_id}")
+        
+        # Use internal integration to sync
+        hybrid_client = HybridClient()
+        integration = get_integration(client=hybrid_client, auth_token=None)
+        
+        # Get all files in the project that have been parsed
+        files_cur = db.files.find({"project_id": project_id, "deleted_at": None}, {"_id": 1})
+        file_ids = [f["_id"] for f in files_cur]
+        
+        if not file_ids:
+            logger.info(f"No files found for project {project_id}")
+            return
+        
+        ingested_count = 0
+        errors = []
+        
+        # Process each file
+        for file_id in file_ids:
+            try:
+                # Get latest version doc
+                vdoc = _get_latest_version_doc(project_id, file_id)
+                if not vdoc:
+                    logger.debug(f"No version doc found for file {file_id}")
+                    continue
+                
+                file_status = vdoc.get("status", "unknown")
+                if file_status != "parsed":
+                    logger.debug(f"File {file_id} status is {file_status}, not parsed. Skipping.")
+                    continue
+                
+                chunk_uri = (vdoc.get("storage") or {}).get("chunk_uri")
+                if not chunk_uri:
+                    logger.warning(f"No chunk_uri for file {file_id}, skipping sync")
+                    continue
+                
+                version = vdoc.get("version", 1)
+                file_version_id = f"v_{file_id}_{version}"
+                
+                # Load and ingest chunks directly (no HTTP call needed)
+                logger.info(f"Syncing chunks for file {file_id} from {chunk_uri}")
+                ingest_result = integration.ingest_chunks_from_chunking_service(
+                    project_id=project_id,
+                    file_id=file_id,
+                    file_version_id=file_version_id,
+                    chunk_uri=chunk_uri
+                )
+                
+                if ingest_result.get("success"):
+                    indexed = ingest_result.get("indexed", 0)
+                    ingested_count += indexed
+                    logger.info(f"Successfully synced {indexed} chunks for file {file_id}")
+                else:
+                    error_msg = ingest_result.get("message", "Unknown error")
+                    errors.append(f"File {file_id}: {error_msg}")
+                    logger.warning(f"Failed to sync chunks for file {file_id}: {error_msg}")
+                    
+            except Exception as e:
+                error_msg = str(e)
+                errors.append(f"File {file_id}: {error_msg}")
+                logger.error(f"Error syncing file {file_id}: {e}", exc_info=True)
+        
+        logger.info(
+            f"Auto-sync to retriever completed for project {project_id}, "
+            f"ingested_chunks={ingested_count}, errors={len(errors)}"
+        )
+        if errors:
+            logger.warning(f"Sync errors: {errors[:5]}")  # Log first 5 errors
+        
+    except Exception as e:
+        logger.warning(
+            f"Failed to auto-sync chunks to retriever for project {project_id}: {e}",
+            exc_info=True
+        )
 
 def _run_parse_for_version(project_id: str, file_id: str, do_ocr: bool, version_doc: Dict[str, Any], *, force: bool = False) -> Dict[str, Any]:
     """Run Docling for a specific version_doc. Updates DB and returns a small result dict with actual chunks."""
@@ -66,6 +275,17 @@ def _run_parse_for_version(project_id: str, file_id: str, do_ocr: bool, version_
     if status == "parsed" and not force:
         # File already parsed - get chunk_uri from version document
         chunk_uri = (version_doc.get("storage") or {}).get("chunk_uri")
+        
+        # Load existing chunks from chunk_uri
+        chunks = []
+        if chunk_uri:
+            try:
+                chunks = _load_chunks_from_uri(chunk_uri)
+                logger.info(f"Loaded {len(chunks)} chunks from existing chunk_uri: {chunk_uri}")
+            except Exception as e:
+                logger.warning(f"Failed to load chunks from {chunk_uri}: {e}")
+                # Continue with empty chunks if loading fails
+        
         return {
             "file_id": file_id,
             "version": version_doc["version"],
@@ -73,7 +293,8 @@ def _run_parse_for_version(project_id: str, file_id: str, do_ocr: bool, version_
             "skipped": True,
             "reason": "already parsed",
             "chunk_uri": chunk_uri,  # Include chunk_uri even for skipped files
-            "chunks": []  # No chunks for skipped files
+            "chunks": chunks,  # Load existing chunks
+            "chunks_count": len(chunks)
         }
 
     # mark 'parsing'
@@ -288,6 +509,9 @@ def _stream_parse_progress(
         'chunks': all_chunks  # All chunks from all processed files
     }
     yield f"data: {json.dumps(summary)}\n\n"
+
+    # NOTE: Auto-sync has been disabled.
+    # After parsing completes, call POST /chunks/sync-all/{project_id} manually to sync chunks.
 
 
 @router.get("/parse-all-latest")

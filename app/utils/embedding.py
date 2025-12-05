@@ -145,6 +145,8 @@ def embed_chunks_batch(
         combined = create_combined_text(text, section_headers)
         combined_texts.append(combined)
     
+    logger.info(f"Encoding {len(combined_texts)} texts with batch_size={batch_size}...")
+    
     # Generate embeddings in batch
     embedder = get_embedder(model_name)
     embeddings = embedder.encode(
@@ -154,7 +156,7 @@ def embed_chunks_batch(
         batch_size=batch_size
     )
     
-    logger.info(f"Generated {len(embeddings)} embeddings")
+    logger.info(f"✅ Generated {len(embeddings)} embeddings successfully")
     
     return embeddings.tolist()
 

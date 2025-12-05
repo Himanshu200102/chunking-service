@@ -36,7 +36,7 @@ def get_or_create_chunks_table(embedding_dim: int = 384):
     - created_at (str): ISO timestamp
     
     Args:
-        embedding_dim: Dimension of embedding vectors (default: 384 for all-MiniLM-L6-v2)
+        embedding_dim: Dimension of embedding vectors (default: 384 for BAAI/bge-small-en-v1.5)
     
     Returns:
         LanceDB table instance

@@ -48,16 +48,23 @@ services:
     env_file: [".env"]
     environment:
       - RETRIEVER_SERVICE_URL=http://host.docker.internal:8001
+      - OPENSEARCH_HOST=opensearch
+      - OPENSEARCH_PORT=9200
+      - AGENT_MODEL_PATH=/app/models/qwen2.5-3b-instruct-q4_k_m.gguf
+      - SUMMARIZER_MODEL_PATH=/app/models/Llama-3.1-8B-Instruct-Q4_K_M.gguf
+      - CHUNKING_SERVICE_URL=http://localhost:8002
+      - ENABLE_EMBEDDINGS_DURING_PARSING=false  # Disable embeddings during parsing, generate during sync instead
     working_dir: /app
     volumes:
       - ./uploads:/app/uploads
       - lancedb_data:/data/lancedb
       - ./app/llama_model:/app/llama_model
+      - ./app/models:/app/models
       - ./app:/app/app  # Mount app directory for live code reload
-    ports: ["8002:8000"]  # Expose chunking/DataRoom API on 8002
+    ports: ["8002:8002"]  # Expose chunking/DataRoom API on 8002 (both internal and external)
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --reload
 
 volumes:
   mongo_data:
